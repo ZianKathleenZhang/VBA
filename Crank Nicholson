@@ -1,0 +1,319 @@
+Option Base 0
+
+'=============================================================================================================
+Public Function impVol(MktPrice As Double, S As Double, T As Double, X As Double, r As Double, Tol As Double) As Double
+'=============================================================================================================
+    
+    Dim vol As Double
+
+    Dim vol_0 As Double: vol_0 = 0  'low boundary equals 0
+    Dim vol_1 As Double: vol_1 = impPutVol(MktPrice, S, T, X, r) 'high boundary equals Euro Put Option Implied Vol
+    
+    'Secant Method
+    While Abs(PriceDif(MktPrice, vol)) > Tol
+        vol = vol_1 - (vol_1 - vol_0) / (PriceDif(MktPrice, vol_1) - PriceDif(MktPrice, vol_0)) * _
+        PriceDif(MktPrice, vol_1)
+        'update new value of vol_0 and vol_1
+        vol_0 = vol_1
+        vol_1 = vol
+    Wend
+    
+    impVol = vol
+'=============================================================================================================
+End Function
+'=============================================================================================================
+Private Function PriceDif(MktPrice As Double, vol As Double)
+'=============================================================================================================
+    'f(x) for secant method
+    PriceDif = CrankNich(vol) - MktPrice
+'=============================================================================================================
+End Function
+'=============================================================================================================
+Function bsput(S As Double, sigma As Double, T As Double, X As Double, r As Double, Optional Div As Double, _
+                        Optional ExDate As Date = #1/1/2000#) As Double
+'=============================================================================================================
+
+    Dim D1 As Double
+    Dim D2 As Double
+
+    D1 = (Log(S / X) + (r + sigma * sigma / 2) * T) / (sigma * T ^ 0.5)
+    D2 = D1 - sigma * T ^ 0.5
+
+    bsput = (-S * Application.NormSDist(-D1) + X * Exp(-r * T) * Application.NormSDist(-D2))
+
+'=============================================================================================================
+End Function
+'=============================================================================================================
+Function impPutVol(MktPrice As Double, S As Double, T As Double, X As Double, r As Double, _
+                        Optional Div As Double, Optional ExDate As Date = #1/1/2000#) As Double
+'=============================================================================================================
+
+    Niter = 10
+    If ExDate = #1/1/2000# Then
+        impPutVol = (2 * Abs(Log(S / X) + (r - Div) * T) / T) ^ 0.5
+    Else
+        TDiv = (ExDate - Application.WorksheetFunction.today()) / 256
+    End If
+    For iter = 1 To Niter
+        impPutVol = impPutVol - (bsput(S, impPutVol, T, X, r, Div, ExDate) - _
+                                MktPrice) / BSPutVega(S, impPutVol, T, X, r, Div, ExDate)
+    Next iter
+
+'=============================================================================================================
+End Function
+'=============================================================================================================
+Function BSPutVega(S As Double, sigma As Double, T As Double, X As Double, r As Double, _
+                        Optional Div As Double, Optional ExDate As Date = #1/1/2000#) As Double
+'=============================================================================================================
+    Dim D1 As Double
+
+    If ExDate = #1/1/2000# Then
+        D1 = (Log(S / X) + (r - Div + sigma * sigma / 2) * T) / (sigma * T ^ 0.5)
+        BSPutVega = S * T ^ 0.5 * Exp(-D1 * D1 / 2) / (2 * Application.Pi()) ^ 0.5
+    Else
+    End If
+    
+'=============================================================================================================
+End Function
+'=============================================================================================================
+Public Function ElementWiseSum(V1() As Double, V2() As Double, VLen As Integer) As Variant
+'=============================================================================================================
+
+    Dim SumVector() As Double
+    ReDim SumVector(VLen)
+    
+    For i = 1 To VLen
+        SumVector(i) = V1(i) + V2(i)
+    Next i
+    
+    ElementWiseSum = SumVector
+    
+'=============================================================================================================
+End Function
+'=============================================================================================================
+Public Function DotProduct(V1() As Double, V2() As Double, N As Integer) As Variant
+'=============================================================================================================
+
+    DotProduct = 0
+    For i = 1 To N
+      DotProduct = DotProduct + V1(i) * V2(i)
+    Next i
+
+'=============================================================================================================
+End Function
+'=============================================================================================================
+Public Function EXCELDotProduct(V1Range As Range, V2Range As Range) As Double
+'=============================================================================================================
+
+    Dim i As Integer, N As Integer
+    Dim V1() As Double, V2() As Double
+    
+    N = V1Range.Rows.Count
+    ReDim V1(N), V2(N)
+    
+    For i = 1 To N
+        V1(i) = V1Range.Cells(i, 1)
+        V2(i) = V2Range.Cells(i, 1)
+    Next i
+    EXCELDotProduct = DotProduct(V1(), V2(), N)
+    
+'=============================================================================================================
+End Function
+'=============================================================================================================
+Public Sub EXCELSum(V1Range As Range, V2Range As Range)
+'==========================================================================================================
+
+    Dim i As Integer, N As Integer
+    Dim V1() As Double, V2() As Double, WorkVector() As Double
+    
+    N = V1Range.Rows.Count
+    ReDim V1(N), V2(N), WorkVector(N)
+    
+    For i = 1 To N
+        V1(i) = V1Range.Cells(i, 1)
+        V2(i) = V2Range.Cells(i, 1)
+    Next i
+    WorkVector = ElementWiseSum(V1(), V2(), N)
+    For i = 1 To N
+        Range("SumRange").Cells(i, 1) = WorkVector(i)
+    Next i
+    
+'=============================================================================================================
+End Sub
+'=============================================================================================================
+Function CrankNich(sig As Double) As Double
+'=============================================================================================================
+    'Crank Nicolson Method pricing American Put Option with no dividends
+    Dim S0 As Double, rf As Double, K As Double, T As Double, SMin As Double, SMax As Double
+    Dim dt As Double, dx As Double, payoff As Double, a As Double, b As Double, c As Double
+    Dim N As Long, M As Long, SInd As Long, i As Long, j As Long
+    Dim SVals() As Double, UVals() As Double, tmpVals() As Double, deltaMin As Double
+    
+    S0 = Range("Price").Cells(1, 1)  'current underlying price
+    rf = Range("RFRate").Cells(1, 1)
+    K = Range("Strike").Cells(1, 1)
+    T = Range("TMat").Cells(1, 1)
+    
+    N = Range("NTimeSteps").Cells(1, 1)
+    M = Range("NPriceSteps").Cells(1, 1)
+    SMax = Range("MaxUPrice").Cells(1, 1)
+    SMin = Range("MinUPrice").Cells(1, 1)
+    
+    ReDim SVals(0 To M + 1), UVals(0 To M + 1)  'stock price vector, option price vector
+    
+    dt = T / N
+    dx = Log(SMax / 0.5) / (M + 1)
+    SInd = CLng(Log(S0 / 0.5) / dx)
+    
+    SVals(0) = S0 * Exp(-SInd * dx)
+    For j = 1 To M + 1 Step 1
+        SVals(j) = SVals(j - 1) * Exp(dx)
+        UVals(j) = MyMax(K - SVals(j), 0)
+    Next j
+    
+    'initial coefficients
+    a = -0.25 * dt / (dx * dx) * (sig ^ 2 + (rf - 0.5 * sig ^ 2) * dx)
+    b = 1 + 0.5 * dt / (dx * dx) * sig ^ 2 + 0.5 * rf * dt
+    c = -0.25 * dt / (dx * dx) * (sig ^ 2 - (rf - 0.5 * sig ^ 2) * dx)
+    
+    'Boundary condition of put option
+    deltaMin = SVals(0) - SVals(1)    'delta at SMin
+    
+    For i = N - 1 To 0 Step -1
+            
+        Call EvlBack(UVals, tmpVals, deltaMin, a, b, c)
+        UVals = tmpVals
+        For j = 0 To M + 1
+            payoff = MyMax(K - SVals(j), 0)
+            'Decide excise American Put Option or not
+            UVals(j) = MyMax(UVals(j), payoff)
+        Next j
+        
+    Next i
+
+    CrankNich = UVals(SInd)
+    
+'==============================================================================================================
+End Function
+'==============================================================================================================
+Private Sub EvlBack(UVals() As Double, tmpVals() As Double, deltaMin As Double, a As Double, b As Double, c As Double)
+'==============================================================================================================
+    Dim low As Long, high As Long, i As Long
+    Dim lVals() As Double, alpha() As Double, beta() As Double
+    
+    low = LBound(UVals)
+    high = UBound(UVals)
+    
+    ReDim tmpVals(low To high), lVals(low To high), alpha(low To high), beta(low To high)
+    
+    For i = low + 1 To high - 1
+        'left-side equation
+        lVals(i) = -a * UVals(i + 1) - (b - 2) * UVals(i) - c * UVals(i - 1)
+    Next i
+
+    alpha(high - 1) = a + b
+    beta(high - 1) = lVals(high - 1)
+    
+    For i = high - 2 To low + 1 Step -1
+         alpha(i) = b - c * a / alpha(i + 1)
+         beta(i) = lVals(i) - beta(i + 1) * a / alpha(i + 1)
+    Next i
+
+    tmpVals(low) = (beta(low + 1) + alpha(low + 1) * deltaMin) / (c + alpha(low + 1))
+    tmpVals(low + 1) = tmpVals(low) + deltaMin
+
+    For i = low + 2 To high - 1
+        tmpVals(i) = (beta(i) - c * tmpVals(i - 1)) / alpha(i)
+    Next i
+
+    tmpVals(high) = tmpVals(high - 1)
+'===============================================================================================================
+End Sub
+'===============================================================================================================
+Private Function MyMax(x1 As Double, x2 As Double) As Double
+'===============================================================================================================
+    If x1 <= x2 Then MyMax = x2 Else MyMax = x1
+'===============================================================================================================
+End Function
+
+'=============================================================================================================
+'Public Function CrankNic(TStep As Long, PStep As Long, T As Double, rf As Double, sig As Double, SMax As Double, K As Double) As Double
+''=============================================================================================================
+'    'Crank Nicolson Method pricing American Put Option with no dividends
+'    Dim Svec() As Double, tvec() As Double, dt As Double, ds As Double, i As Integer, j As Integer, price() As Double
+'    Dim a() As Double, b() As Double, c() As Double, fPrev() As Double, fNew() As Double, tmp() As Double, M1() As Double, M2() As Double, bb() As Double
+'    Dim LU() As Double, DInv() As Double, LUf() As Double
+'    ReDim Svec(PStep + 1), tvec(TStep + 1), a(PStep + 1), b(PStep + 1), c(PStep + 1)
+'    ReDim LU(PStep - 1, PStep - 1), DInv(PStep - 1, PStep - 1)
+'    ReDim fPrev(PStep - 1), fNew(PStep - 1), tmp(PStep - 1)
+'    'Option price matrix
+'    ReDim price(1 + PStep, 1 + TStep), M1(PStep - 1, PStep - 1), M2(PStep - 1, PStep - 1)
+'
+'    dt = T / TStep
+'    ds = SMax / PStep
+'
+'    For j = 1 To PStep + 1
+'        'coefficients
+'        a(j) = (dt / 4) * (sig ^ 2 * (j - 1) ^ 2 - rf * (j - 1))
+'        b(j) = -(dt / 2) * (sig ^ 2 * (j - 1) ^ 2 + rf)
+'        c(j) = (dt / 4) * (sig ^ 2 * (j - 1) ^ 2 + rf * (j - 1))
+'        'Stock price grids vector
+'        Svec(j) = (j - 1) * ds
+'        'price boundary condition at maturity
+'        price(j, TStep + 1) = my_max(K - Svec(j), 0)
+'    Next j
+'
+'    'Boundary condition
+'    For i = 1 To TStep
+'        price(PStep + 1, i) = 0 'out of Money at SMax
+'        price(1, i) = K
+'    Next i
+'
+'    'From Coefficient Matrix M_1*u_(i-1) = M_2*u_i
+'    'M1=D+L+U Relaxation Methods
+'    'DInv
+'    For j = 1 To PStep - 1
+'        DInv(j, j) = 1 / (1 - b(j))
+'    Next j
+'    'LU stands for -(L+U)!!!!!!!!
+'    LU(1, 2) = c(1)
+'    LU(PStep - 1, PStep - 2) = a(PStep - 1)
+'    For j = 2 To PStep - 2
+'        LU(j, j - 1) = a(j)
+'        LU(j, j + 1) = c(j)
+'    Next j
+'
+'    M1(1, 1) = 1 - b(1)
+'    M1(1, 2) = -c(1)
+'    M1(PStep - 1, PStep - 2) = -a(PStep - 1)
+'    M1(PStep - 1, PStep - 1) = 1 - b(PStep - 1)
+'    For j = 2 To PStep - 2
+'        M1(j, j - 1) = -a(j)
+'        M1(j, j) = 1 - b(j)
+'        M1(j, j + 1) = -c(j)
+'    Next j
+'    'M2
+'    M2(1, 1) = 1 + b(1)
+'    M2(1, 2) = c(1)
+'    M2(PStep - 1, PStep - 2) = a(PStep - 1)
+'    M2(PStep - 1, PStep - 1) = 1 + b(PStep - 1)
+'    For j = 2 To PStep - 2
+'        M2(j, j - 1) = a(j)
+'        M2(j, j) = 1 + b(j)
+'        M2(j, j + 1) = c(j)
+'    Next j
+'
+'    'EvolveBack
+'    For i = TStep To 1 Step -1
+'        For j = 2 To PStep
+'            fPrev(j) = price(j, i + 1)
+'        Next j
+'        tmp = Application.WorksheetFunction.MMult(LU, fPrev)
+'
+'    Next i
+'
+'
+''=============================================================================================================
+'End Function
+
+
