@@ -1,1 +1,100 @@
+Function Cholesky(matrix As Range)
+Dim A, U() As Double
+Dim N As Integer, i As Integer, k As Integer, j As Integer
 
+A = matrix
+N = matrix.Rows.Count
+
+ReDim U(1 To N, 1 To N)
+
+For i = 1 To N
+    U(i, i) = A(i, i) ^ 0.5
+    For k = i + 1 To N
+        U(i, k) = A(i, k) / U(i, i) 'compute row i of U
+    Next k
+    
+    For j = i + 1 To N
+        For k = j To N
+            A(j, k) = A(j, k) - U(i, j) * U(i, k)
+        Next k
+    Next j
+Next i
+U(N, N) = A(N, N) ^ 0.5
+Cholesky = U
+
+End Function
+Function myVaR(r As Range, trial As Long) As Double
+
+Dim x() As Double
+ReDim x(1 To 3, 1 To trial)
+Dim Y As Variant
+'Creat matrix V for portfolio value of trials
+'Dim V() As Double
+ReDim V(1 To trial)
+Dim index As Long
+Dim Ans As Double
+Dim i As Long
+Dim j As Long
+
+
+'Inital three independent variables
+For i = 1 To 3
+    For j = 1 To trial
+        U = Rnd()
+        While U = 0
+            U = Rnd()
+        Wend
+        x(i, j) = Application.WorksheetFunction.NormSInv(U)
+    Next j
+Next i
+
+Y = Application.WorksheetFunction.MMult(r, x)
+
+For i = 1 To trial
+    Y(1, i) = Y(1, i) * 0.4 / (252 ^ 0.5) * 47 * 100000
+    Y(2, i) = Y(2, i) * 0.45 / (252 ^ 0.5) * 144 * (-40000)
+    Y(3, i) = Y(3, i) * 0.3 / (252 ^ 0.5) * 31 * 10000
+    V(i) = Y(1, i) + Y(2, i) + Y(3, i)
+Next i
+
+Call qSort(V, 1, UBound(V))
+
+index = trial \ 100
+myVaR = V(index)
+
+End Function
+
+'Inplace sort A[p...r]
+Public Function Partition(Arr As Variant, p As Long, r As Long)
+Dim x As Double, i As Long, j As Long, tmp As Double
+x = Arr(r)
+i = p - 1
+
+For j = p To r - 1
+    If Arr(j) <= x Then
+        i = i + 1
+        tmp = Arr(j)
+        Arr(j) = Arr(i)
+        Arr(i) = tmp
+    End If
+Next j
+
+tmp = Arr(r)
+Arr(r) = Arr(i + 1)
+Arr(i + 1) = tmp
+
+Partition = i + 1
+
+End Function
+
+Public Sub qSort(Arr As Variant, p As Long, r As Long)
+
+Dim q As Long
+
+If p < r Then
+    q = Partition(Arr, p, r)
+    qSort Arr, p, q - 1
+    qSort Arr, q + 1, r
+End If
+
+End Sub
